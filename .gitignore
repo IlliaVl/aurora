@@ -43,3 +43,5 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+lib/features/random_image/data/models/image_model.freezed.dart
+lib/features/random_image/data/models/image_model.g.dart
