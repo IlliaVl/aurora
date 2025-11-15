@@ -1,14 +1,12 @@
 import 'dart:ui';
 import 'package:aurora/core/di/injection_container.dart';
+import 'package:aurora/features/random_image/domain/entities/image_entity.dart'; // <-- ADDED
 import 'package:aurora/features/random_image/presentation/bloc/random_image_bloc.dart';
 
-// --- REMOVED cached_network_image ---
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shimmer/shimmer.dart';
 
-// --- We need the data source to get the background URL ---
-import 'package:aurora/features/random_image/data/datasources/image_remote_datasource_interface.dart';
 
 /// The root widget for the Random Image feature.
 ///
@@ -37,16 +35,8 @@ class RandomImageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- We get the background URL from the data source ---
-    // This is safer and ensures the background only updates
-    // *after* a successful load.
-    final backgroundUrl = sl<ImageRemoteDataSourceInterface>()
-        .getImageUrlForBackground();
 
     return BlocListener<RandomImageBloc, RandomImageState>(
-      // --- THIS WILL NOW WORK ---
-      // If the byte download fails, the BLoC will emit [Error]
-      // and this listener will show the popup.
       listener: (context, state) {
         if (state is Error) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -67,7 +57,6 @@ class RandomImageView extends StatelessWidget {
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
-          // --- "Frosted Glass" Nav Bar ---
           flexibleSpace: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -75,22 +64,14 @@ class RandomImageView extends StatelessWidget {
             ),
           ),
         ),
-        // --- Use a Stack for the "Ambilight" effect ---
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // --- LAYER 1: The Blurred Background Image ---
-            // --- "Smooth Background Transition" ---
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              child: ImageFiltered(
-                key: ValueKey('bg_${backgroundUrl}'),
-                imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                // We use a simple Image.network here
-                child: _buildBackgroundImageWidget(
-                  context,
-                  context.watch<RandomImageBloc>().state,
-                ),
+              child: _buildBackgroundImageWidget(
+                context,
+                context.watch<RandomImageBloc>().state,
               ),
             ),
 
@@ -118,7 +99,6 @@ class RandomImageView extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // --- The "Squared Image" Layout ---
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: AspectRatio(
@@ -127,10 +107,6 @@ class RandomImageView extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              width: 1,
-                            ),
                           ),
                           clipBehavior: Clip.antiAlias,
                           child: _buildImageWidget(
@@ -185,94 +161,61 @@ class RandomImageView extends StatelessWidget {
     );
   }
 
-  /// Helper widget to decide what to show in the image area
+  /// --- HELPER WIDGETS ---
+  /// These helpers now build the image widget based on the
+  /// *entire state*, which is the key to fixing the transition.
+
+  /// Builds the main (foreground) image widget.
   Widget _buildImageWidget(BuildContext context, RandomImageState state) {
-    // --- Use Dart 3 switch for pattern matching ---
-    return switch (state) {
-      // --- Initial State (also loading) ---
-      Initial() => const _LoadingShimmer(key: ValueKey('initial')),
+    final ImageEntity? image = switch (state) {
+      Loaded(:final image) => image,
+      Loading(:final previousImage) => previousImage,
+      Error(:final previousImage) => previousImage,
+      Initial() => null,
+    };
 
-      // --- Loading State ---
-      // Show the *previous* image if we have one
-      Loading(previousImage: final previousImage) when previousImage != null =>
-        Image.memory(
-          key: ValueKey(previousImage.imageBytes.hashCode),
-          previousImage.imageBytes,
-          fit: BoxFit.cover,
-        ),
-      // Otherwise, show the shimmer
-      Loading() => const _LoadingShimmer(key: ValueKey('loading')),
-
-      // --- "Show Previous Image on Error" Fix ---
-      Error(previousImage: final previousImage) when previousImage != null =>
-        Image.memory(
-          key: ValueKey(previousImage.imageBytes.hashCode),
-          previousImage.imageBytes,
-          fit: BoxFit.cover,
-        ),
-      // Fallback if error on first load
-      Error() => const _ErrorIcon(key: ValueKey('error')),
-
-      // --- Loaded State ---
-      Loaded(:final image) => Image.memory(
+    if (image != null) {
+      return Image.memory(
         key: ValueKey(image.imageBytes.hashCode),
-        // Key for AnimatedSwitcher
         image.imageBytes,
         fit: BoxFit.cover,
-        // --- THIS IS THE FIX ---
-        // There is no placeholder. The AnimatedSwitcher
-        // will cross-fade directly from the old bytes
-        // to the new bytes.
-      ),
+      );
+    }
+
+    // Show shimmer on initial load, or error icon if error on first load
+    return switch (state) {
+      Error() => const _ErrorIcon(key: ValueKey('error')),
+      _ => const _LoadingShimmer(key: ValueKey('initial_loading')),
     };
   }
 
-  /// Helper widget to decide what to show in the image area
+  /// Builds the blurred (background) image widget.
   Widget _buildBackgroundImageWidget(
     BuildContext context,
     RandomImageState state,
   ) {
-    // --- Use Dart 3 switch for pattern matching ---
-    return switch (state) {
-      // --- Initial State (also loading) ---
-      Initial() => const _LoadingShimmer(key: ValueKey('initial')),
-
-      // --- Loading State ---
-      // Show the *previous* image if we have one
-      Loading(previousImage: final previousImage) when previousImage != null =>
-        Image.memory(
-          previousImage.imageBytes,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
-        ),
-      // Otherwise, show the shimmer
-      Loading() => const _LoadingShimmer(key: ValueKey('loading')),
-
-      // --- "Show Previous Image on Error" Fix ---
-      Error(previousImage: final previousImage) when previousImage != null =>
-        Image.memory(
-          previousImage.imageBytes,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
-        ),
-      // Fallback if error on first load
-      Error() => const _ErrorIcon(key: ValueKey('error')),
-
-      // --- Loaded State ---
-      Loaded(:final image) => Image.memory(
-        // Key for AnimatedSwitcher
-        image.imageBytes,
-        width: double.infinity,
-        height: double.infinity,
-        fit: BoxFit.cover,
-        // --- THIS IS THE FIX ---
-        // There is no placeholder. The AnimatedSwitcher
-        // will cross-fade directly from the old bytes
-        // to the new bytes.
-      ),
+    final ImageEntity? image = switch (state) {
+      Loaded(:final image) => image,
+      Loading(:final previousImage) => previousImage,
+      Error(:final previousImage) => previousImage,
+      Initial() => null,
     };
+
+    if (image != null) {
+      return ImageFiltered(
+        key: ValueKey('bg_${image.imageBytes.hashCode}'),
+        imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Image.memory(
+          image.imageBytes,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+
+    // Fallback for initial load
+    return const SizedBox(key: ValueKey('bg_initial'));
   }
 }
 

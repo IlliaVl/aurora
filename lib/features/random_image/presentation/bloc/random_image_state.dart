@@ -7,19 +7,16 @@ sealed class RandomImageState with _$RandomImageState {
   const factory RandomImageState.initial() = Initial;
 
   /// Loading state, while fetching image.
-  ///
-  /// It can optionally hold the previous image
-  /// to prevent the UI from "blinking" back to a shimmer.
   const factory RandomImageState.loading({ImageEntity? previousImage}) =
       Loading;
 
-  /// Success state, holds the image.
-  const factory RandomImageState.loaded({required ImageEntity image}) = Loaded;
+  /// Success state, holds the new image and the previous one for transition.
+  const factory RandomImageState.loaded({
+    required ImageEntity image,
+    ImageEntity? previousImage, // <-- ADDED
+  }) = Loaded;
 
-  /// Error state, holds the failure message.
-  ///
-  /// It can also hold the previous image to keep
-  /// it on screen while showing the error.
+  /// Error state, holds the failure message and the previous image.
   const factory RandomImageState.error({
     required String message,
     ImageEntity? previousImage,

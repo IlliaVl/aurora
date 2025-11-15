@@ -58,12 +58,19 @@ class ImageRemoteDataSource implements ImageRemoteDataSourceInterface {
       }
     } on DioException catch (e) {
       // --- THIS IS THE FIX ---
-      // If the image download fails (404, etc.), this will catch it
-      // and throw a ServerException, which the BLoC can handle.
-      throw ServerException('Failed to connect: ${e.message}');
+      // We catch the technical error and convert it to a
+      // simple, user-friendly message.
+      if (e.response != null && e.response?.statusCode == 404) {
+        throw ServerException(
+          'Oops! The image could not be found (Error 404).',
+        );
+      } else {
+        // Handle other Dio errors (network, timeout, etc.)
+        throw ServerException('Could not connect to server. Please try again.');
+      }
     } catch (e) {
-      // Handle parsing errors or other exceptions
-      throw ServerException('An unexpected error occurred: ${e.toString()}');
+      // Handle parsing errors or other unexpected exceptions
+      throw ServerException('An unexpected error occurred.');
     }
   }
 
