@@ -48,5 +48,20 @@ To run this project, you must first run the build runner to generate the necessa
 
 ### 1. Get Dependencies
 
-```bash
-flutter pub get
+    ```bash
+    flutter pub get
+    ```
+
+### 2. Run Build Runner
+
+**This step is mandatory.**
+
+    ```bash
+    flutter pub run build_runner build --delete-conflicting-outputs
+    ```
+
+### 3. Run the App
+
+    ```bash
+    flutter run
+    ```
