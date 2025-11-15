@@ -1,13 +1,17 @@
+import 'dart:typed_data'; // <-- ADDED
 import 'package:equatable/equatable.dart';
 
 /// --- Business Entity ---
-/// A simple Dart object representing the core data we need.
-/// It is decoupled from any API response.
+///
+/// This object represents the actual image data
+/// that our UI will display.
 class ImageEntity extends Equatable {
-  final String url;
+  // --- UPDATED ---
+  /// The raw bytes of the image.
+  final Uint8List imageBytes;
 
-  const ImageEntity({required this.url});
+  const ImageEntity({required this.imageBytes});
 
   @override
-  List<Object> get props => [url];
+  List<Object> get props => [imageBytes];
 }

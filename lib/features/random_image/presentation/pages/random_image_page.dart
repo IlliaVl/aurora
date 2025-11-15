@@ -1,10 +1,14 @@
 import 'dart:ui';
 import 'package:aurora/core/di/injection_container.dart';
 import 'package:aurora/features/random_image/presentation/bloc/random_image_bloc.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
+// --- REMOVED cached_network_image ---
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shimmer/shimmer.dart';
+
+// --- We need the data source to get the background URL ---
+import 'package:aurora/features/random_image/data/datasources/image_remote_datasource_interface.dart';
 
 /// The root widget for the Random Image feature.
 ///
@@ -26,123 +30,157 @@ class RandomImagePage extends StatelessWidget {
 
 /// The main view widget that rebuilds based on [RandomImageState].
 ///
-/// It uses a [BlocBuilder] to rebuild the UI accordingly,
-/// handling loading, success, and error states.
+/// It uses a [BlocListener] to show errors and a [BlocBuilder]
+/// to rebuild the UI.
 class RandomImageView extends StatelessWidget {
   const RandomImageView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // We get the image URL from the state
-    final imageUrl = switch (context.watch<RandomImageBloc>().state) {
-      Loaded(:final image) => image.url,
-      Loading(previousImage: final pImage) when pImage != null => pImage.url,
-      _ => null,
-    };
+    // --- We get the background URL from the data source ---
+    // This is safer and ensures the background only updates
+    // *after* a successful load.
+    final backgroundUrl = sl<ImageRemoteDataSourceInterface>()
+        .getImageUrlForBackground();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "AURORA",
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // --- LAYER 1: The Blurred Background Image ---
-          if (imageUrl != null)
-            ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                // Fade in the blur
-                fadeInDuration: const Duration(milliseconds: 700),
-              ),
+    return BlocListener<RandomImageBloc, RandomImageState>(
+      // --- THIS WILL NOW WORK ---
+      // If the byte download fails, the BLoC will emit [Error]
+      // and this listener will show the popup.
+      listener: (context, state) {
+        if (state is Error) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              // The theme is applied from main.dart
             ),
-
-          // --- LAYER 2: A dark gradient overlay to ensure text is readable ---
-          Container(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.center,
-                radius: 0.8,
-                colors: [
-                  Colors.black.withValues(alpha: 0.1),
-                  // Center is lighter
-                  const Color(0xFF1C1C1C).withValues(alpha: 0.8),
-                  // Edges are darker
-                ],
-                stops: const [0.0, 1.0],
-              ),
+          );
+        }
+      },
+      child: Scaffold(
+        // Allow the body to draw behind the app bar
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          title: const Text(
+            "AURORA",
+            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          ),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          // --- "Frosted Glass" Nav Bar ---
+          flexibleSpace: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.transparent),
             ),
           ),
+        ),
+        // --- Use a Stack for the "Ambilight" effect ---
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // --- LAYER 1: The Blurred Background Image ---
+            // --- "Smooth Background Transition" ---
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: ImageFiltered(
+                key: ValueKey('bg_${backgroundUrl}'),
+                imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                // We use a simple Image.network here
+                child: _buildBackgroundImageWidget(
+                  context,
+                  context.watch<RandomImageBloc>().state,
+                ),
+              ),
+            ),
 
-          // --- LAYER 3: The UI Content ---
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // --- This is the "Not Squared" fix ---
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: AspectRatio(
-                      aspectRatio: 1.0,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildImageWidget(
-                          context,
-                          context.watch<RandomImageBloc>().state,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
+            // --- LAYER 2: A dark gradient overlay to ensure text is readable ---
+            Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.8,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.1),
+                    // Center is lighter
+                    const Color(0xFF1C1C1C).withValues(alpha: 0.8),
+                    // Edges are darker
+                  ],
+                  stops: const [0.0, 1.0],
+                ),
+              ),
+            ),
 
-                  // --- The "Another" Button ---
-                  ElevatedButton(
-                    onPressed: switch (context.watch<RandomImageBloc>().state) {
-                      // Only enable button if not loading
-                      Loading() => null,
-                      _ => () => context.read<RandomImageBloc>().add(
-                        const RandomImageEvent.fetchRequested(),
-                      ),
-                    },
-                    // We use the button's theme from main.dart
-                    child: SizedBox(
-                      width: 120,
-                      height: 24,
-                      child: Center(
-                        child: switch (context.watch<RandomImageBloc>().state) {
-                          Loading() => const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: Color(0xFF1C1C1C), // auroraBlack
+            // --- LAYER 3: The UI Content ---
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // --- The "Squared Image" Layout ---
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: AspectRatio(
+                        aspectRatio: 1.0,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              width: 1,
                             ),
                           ),
-                          _ => const Text("Another"),
-                        },
+                          clipBehavior: Clip.antiAlias,
+                          child: _buildImageWidget(
+                            context,
+                            context.watch<RandomImageBloc>().state,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 32),
+
+                    // --- The "Another" Button ---
+                    ElevatedButton(
+                      onPressed: switch (context
+                          .watch<RandomImageBloc>()
+                          .state) {
+                        // Only enable button if not loading
+                        Loading() => null,
+                        _ => () => context.read<RandomImageBloc>().add(
+                          const RandomImageEvent.fetchRequested(),
+                        ),
+                      },
+                      // We use the button's theme from main.dart
+                      child: SizedBox(
+                        // --- "Fixed Size Button" Fix ---
+                        width: 120,
+                        height: 24,
+                        child: Center(
+                          child: switch (context
+                              .watch<RandomImageBloc>()
+                              .state) {
+                            Loading() => const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Color(0xFF1C1C1C), // auroraBlack
+                              ),
+                            ),
+                            _ => const Text("Another"),
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -157,45 +195,103 @@ class RandomImageView extends StatelessWidget {
       // --- Loading State ---
       // Show the *previous* image if we have one
       Loading(previousImage: final previousImage) when previousImage != null =>
-        CachedNetworkImage(
-          key: ValueKey(previousImage.url),
-          imageUrl: previousImage.url,
+        Image.memory(
+          key: ValueKey(previousImage.imageBytes.hashCode),
+          previousImage.imageBytes,
           fit: BoxFit.cover,
         ),
       // Otherwise, show the shimmer
       Loading() => const _LoadingShimmer(key: ValueKey('loading')),
 
-      // --- Error State ---
-      Error(:final message) => Padding(
-        key: const ValueKey('error'),
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+      // --- "Show Previous Image on Error" Fix ---
+      Error(previousImage: final previousImage) when previousImage != null =>
+        Image.memory(
+          key: ValueKey(previousImage.imageBytes.hashCode),
+          previousImage.imageBytes,
+          fit: BoxFit.cover,
         ),
-      ),
+      // Fallback if error on first load
+      Error() => const _ErrorIcon(key: ValueKey('error')),
 
       // --- Loaded State ---
-      Loaded(:final image) => CachedNetworkImage(
-        key: ValueKey(image.url),
+      Loaded(:final image) => Image.memory(
+        key: ValueKey(image.imageBytes.hashCode),
         // Key for AnimatedSwitcher
-        imageUrl: image.url,
+        image.imageBytes,
         fit: BoxFit.cover,
-        placeholder: (context, url) => const _LoadingShimmer(),
-        errorWidget: (context, url, error) => Center(
-          child: Icon(
-            Icons.broken_image,
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.5),
-            size: 40,
-          ),
-        ),
+        // --- THIS IS THE FIX ---
+        // There is no placeholder. The AnimatedSwitcher
+        // will cross-fade directly from the old bytes
+        // to the new bytes.
       ),
     };
+  }
+
+  /// Helper widget to decide what to show in the image area
+  Widget _buildBackgroundImageWidget(
+    BuildContext context,
+    RandomImageState state,
+  ) {
+    // --- Use Dart 3 switch for pattern matching ---
+    return switch (state) {
+      // --- Initial State (also loading) ---
+      Initial() => const _LoadingShimmer(key: ValueKey('initial')),
+
+      // --- Loading State ---
+      // Show the *previous* image if we have one
+      Loading(previousImage: final previousImage) when previousImage != null =>
+        Image.memory(
+          previousImage.imageBytes,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      // Otherwise, show the shimmer
+      Loading() => const _LoadingShimmer(key: ValueKey('loading')),
+
+      // --- "Show Previous Image on Error" Fix ---
+      Error(previousImage: final previousImage) when previousImage != null =>
+        Image.memory(
+          previousImage.imageBytes,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      // Fallback if error on first load
+      Error() => const _ErrorIcon(key: ValueKey('error')),
+
+      // --- Loaded State ---
+      Loaded(:final image) => Image.memory(
+        // Key for AnimatedSwitcher
+        image.imageBytes,
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.cover,
+        // --- THIS IS THE FIX ---
+        // There is no placeholder. The AnimatedSwitcher
+        // will cross-fade directly from the old bytes
+        // to the new bytes.
+      ),
+    };
+  }
+}
+
+/// --- A Reusable Error Icon Widget ---
+class _ErrorIcon extends StatelessWidget {
+  const _ErrorIcon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+          size: 40,
+        ),
+      ),
+    );
   }
 }
 

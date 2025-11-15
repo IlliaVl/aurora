@@ -17,5 +17,11 @@ sealed class RandomImageState with _$RandomImageState {
   const factory RandomImageState.loaded({required ImageEntity image}) = Loaded;
 
   /// Error state, holds the failure message.
-  const factory RandomImageState.error({required String message}) = Error;
+  ///
+  /// It can also hold the previous image to keep
+  /// it on screen while showing the error.
+  const factory RandomImageState.error({
+    required String message,
+    ImageEntity? previousImage,
+  }) = Error;
 }
