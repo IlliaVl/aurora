@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:aurora/core/di/injection_container.dart';
 import 'package:aurora/features/random_image/presentation/bloc/random_image_bloc.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -32,110 +33,117 @@ class RandomImageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<RandomImageBloc, RandomImageState>(
-      builder: (context, state) {
-        // --- Get the current background color, or default ---
-        // This pattern allows us to keep the old color while loading
-        final (Color glowColor, Brightness brightness) = switch (state) {
-          Loaded(:final backgroundColor, :final foregroundBrightness) => (
-            backgroundColor,
-            foregroundBrightness,
-          ),
-          Loading(
-            previousBackgroundColor: final bgColor,
-            previousForegroundBrightness: final bBrightness,
-          )
-              when bgColor != null && bBrightness != null =>
-            (bgColor, bBrightness),
-          _ => (const Color(0xFF1C1C1C), Brightness.dark),
-        };
+    // We get the image URL from the state
+    final imageUrl = switch (context.watch<RandomImageBloc>().state) {
+      Loaded(:final image) => image.url,
+      Loading(previousImage: final pImage) when pImage != null => pImage.url,
+      _ => null,
+    };
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text(
-              "AURORA",
-              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          "AURORA",
+          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // --- LAYER 1: The Blurred Background Image ---
+          if (imageUrl != null)
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                // Fade in the blur
+                fadeInDuration: const Duration(milliseconds: 700),
+              ),
             ),
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-          ),
-          // --- Use an AnimatedContainer to smoothly change the gradient ---
-          body: AnimatedContainer(
-            duration: const Duration(milliseconds: 700),
-            // --- THIS IS THE SOLID COLOR BACKGROUND ---
-            // This matches your screenshot of the red road.
-            color: glowColor,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                // --- THIS IS THE LAYOUT FIX ---
-                // The Column is no longer inside the AspectRatio
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // --- 1:1 Aspect Ratio Box ---
-                    // This forces its child to be a square.
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: AspectRatio(
-                        aspectRatio: 1.0,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(16),
-                            // border: Border.all(
-                            //   color: Theme.of(
-                            //     context,
-                            //   ).colorScheme.onSurface.withValues(alpha: 0.1),
-                            //   width: 1,
-                            // ),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: _buildImageWidget(context, state),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
 
-                    // --- The "Another" Button ---
-                    ElevatedButton(
-                      onPressed: switch (state) {
-                        // Only enable button if not loading
-                        Loading() => null,
-                        _ => () => context.read<RandomImageBloc>().add(
-                          const RandomImageEvent.fetchRequested(),
-                        ),
-                      },
-                      // --- Dynamically style the button ---
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: brightness == Brightness.dark
-                            ? const Color(0xFFD95A2B) // Aurora Orange
-                            : const Color(0xFFF5F5F7), // Aurora White
-                        foregroundColor: const Color(
-                          0xFF1C1C1C,
-                        ), // Aurora Black
-                      ),
-                      child: switch (state) {
-                        Loading() => const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFF1C1C1C),
-                          ),
-                        ),
-                        _ => const Text("Another"),
-                      },
-                    ),
-                  ],
-                ),
+          // --- LAYER 2: A dark gradient overlay to ensure text is readable ---
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 0.8,
+                colors: [
+                  Colors.black.withValues(alpha: 0.1),
+                  // Center is lighter
+                  const Color(0xFF1C1C1C).withValues(alpha: 0.8),
+                  // Edges are darker
+                ],
+                stops: const [0.0, 1.0],
               ),
             ),
           ),
-        );
-      },
+
+          // --- LAYER 3: The UI Content ---
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // --- This is the "Not Squared" fix ---
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _buildImageWidget(
+                          context,
+                          context.watch<RandomImageBloc>().state,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // --- The "Another" Button ---
+                  ElevatedButton(
+                    onPressed: switch (context.watch<RandomImageBloc>().state) {
+                      // Only enable button if not loading
+                      Loading() => null,
+                      _ => () => context.read<RandomImageBloc>().add(
+                        const RandomImageEvent.fetchRequested(),
+                      ),
+                    },
+                    // We use the button's theme from main.dart
+                    child: SizedBox(
+                      width: 120,
+                      height: 24,
+                      child: Center(
+                        child: switch (context.watch<RandomImageBloc>().state) {
+                          Loading() => const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Color(0xFF1C1C1C), // auroraBlack
+                            ),
+                          ),
+                          _ => const Text("Another"),
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -173,8 +181,6 @@ class RandomImageView extends StatelessWidget {
       // --- Loaded State ---
       Loaded(:final image) => CachedNetworkImage(
         key: ValueKey(image.url),
-        // width: 200,
-        // height: 200,
         // Key for AnimatedSwitcher
         imageUrl: image.url,
         fit: BoxFit.cover,
@@ -182,7 +188,9 @@ class RandomImageView extends StatelessWidget {
         errorWidget: (context, url, error) => Center(
           child: Icon(
             Icons.broken_image,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.5),
             size: 40,
           ),
         ),

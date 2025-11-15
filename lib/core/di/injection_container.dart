@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
-import 'package:http/http.dart' as http;
+
 import 'package:injectable/injectable.dart';
 
 // This is the auto-generated file
@@ -21,9 +21,4 @@ abstract class RegisterModule {
   // Register Dio as a singleton
   @lazySingleton
   Dio get dio => Dio();
-
-  // --- ADDED ---
-  // Register http.Client for our new service
-  @lazySingleton
-  http.Client get httpClient => http.Client();
 }
