@@ -1,4 +1,5 @@
 import 'package:aurora/core/di/injection_container.dart';
+import 'package:aurora/core/theme/app_theme.dart';
 import 'package:aurora/features/random_image/presentation/pages/random_image_page.dart';
 import 'package:flutter/material.dart';
 
@@ -20,54 +21,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- The core dark theme ---
-    final ThemeData darkTheme = ThemeData(
-      brightness: Brightness.dark,
-      useMaterial3: true,
-      scaffoldBackgroundColor: auroraBlack,
-      // The brand colors for the main color scheme
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: auroraOrange,
-        brightness: Brightness.dark,
-        primary: auroraOrange,
-        onPrimary: auroraWhite,
-        surface: auroraBlack,
-        onSurface: auroraWhite,
-        error: Colors.redAccent,
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: auroraWhite,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: auroraOrange,
-          // Button background
-          foregroundColor: auroraWhite,
-          // Button text
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-      // Theme for the loading indicator
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: auroraOrange,
-      ),
-    );
-
     return MaterialApp(
       title: 'Aurora',
-      // --- Enforce dark theme ---
-      // This matches the strong brand identity
-      themeMode: ThemeMode.dark,
-      theme: darkTheme,
-      darkTheme: darkTheme,
+      // --- Respect System Settings ---
+      // This allows the app to switch between light and dark modes automatically
+      themeMode: ThemeMode.system,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
       debugShowCheckedModeBanner: false,
-      // The entry point is now the BLoC-powered page
+      // Set to true to visually debug accessibility touch targets and labels
+      // showSemanticsDebugger: true,
       home: const RandomImagePage(),
     );
   }

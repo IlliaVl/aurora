@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shimmer/shimmer.dart';
 
-
 /// The root widget for the Random Image feature.
 ///
 /// This widget is responsible for creating and providing the
@@ -56,6 +55,7 @@ class _RandomImageViewState extends State<RandomImageView> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<RandomImageBloc>().state;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return MultiBlocListener(
       listeners: [
@@ -91,9 +91,14 @@ class _RandomImageViewState extends State<RandomImageView> {
         // Allow the body to draw behind the app bar
         extendBodyBehindAppBar: true,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             "AURORA",
-            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              // --- A11y & Theme: Ensure title contrast ---
+              color: isDark ? Colors.white : Colors.black,
+            ),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -111,7 +116,7 @@ class _RandomImageViewState extends State<RandomImageView> {
               duration: _animDuration,
               switchInCurve: Curves.easeInOut,
               switchOutCurve: Curves.easeInOut,
-              child: _buildBackgroundImageWidget(context, state),
+              child: _buildBackgroundImageWidget(context, state, isDark),
             ),
             Center(
               child: Padding(
@@ -123,60 +128,107 @@ class _RandomImageViewState extends State<RandomImageView> {
                       aspectRatio: 1.0,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         clipBehavior: Clip.antiAlias,
                         // --- Foreground Image Stack ---
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // 1. Underlay (Previous Image)
-                            if (_getPreviousImage(state) case final prev?)
-                              Image.memory(
-                                key: ValueKey(
-                                  'fg_underlay_${prev.imageBytes.hashCode}',
+                        // --- A11y: Semantics for the main image content ---
+                        child: Semantics(
+                          label: "Randomly fetched image from Unsplash",
+                          image: true,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              // 1. Underlay (Previous Image)
+                              if (_getPreviousImage(state) case final prev?)
+                                Image.memory(
+                                  key: ValueKey(
+                                    'fg_underlay_${prev.imageBytes.hashCode}',
+                                  ),
+                                  prev.imageBytes,
+                                  fit: BoxFit.cover,
+                                  gaplessPlayback: true,
                                 ),
-                                prev.imageBytes,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                              ),
 
-                            // 2. Animated Switcher
-                            AnimatedSwitcher(
-                              duration: _animDuration,
-                              switchInCurve: Curves.easeInOut,
-                              switchOutCurve: Curves.easeInOut,
-                              child: _buildImageWidget(context, state),
-                            ),
-                          ],
+                              // 2. Animated Switcher
+                              AnimatedSwitcher(
+                                duration: _animDuration,
+                                switchInCurve: Curves.easeInOut,
+                                switchOutCurve: Curves.easeInOut,
+                                child: _buildImageWidget(context, state),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 32),
 
                     // --- The "Another" Button ---
-                    ElevatedButton(
-                      // Disable button while Loading OR while Animating
-                      onPressed: (_isLoading(state) || _isVisualTransitioning)
-                          ? null
-                          : () => context.read<RandomImageBloc>().add(
-                              const RandomImageEvent.fetchRequested(),
+                    // --- Theme: Custom style based on mode ---
+                    Theme(
+                      data: Theme.of(context).copyWith(
+                        elevatedButtonTheme: ElevatedButtonThemeData(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark
+                                ? const Color(
+                                    0xFFD95A2B,
+                                  ) // Aurora Orange (Dark Mode)
+                                : Colors.black,
+                            // Black (Light Mode)
+                            foregroundColor: isDark
+                                ? Colors.white
+                                : const Color(0xFFD95A2B),
+                            // Orange Text (Light Mode)
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 16,
                             ),
-                      child: SizedBox(
-                        width: 120,
-                        height: 24,
-                        child: Center(
-                          child: (_isLoading(state) || _isVisualTransitioning)
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    color: Color(0xFF1C1C1C),
-                                  ),
-                                )
-                              : const Text("Another"),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: ElevatedButton(
+                        // --- A11y: Descriptive label ---
+                        // "Another" is visual text, semantics gives context.
+                        onPressed: (_isLoading(state) || _isVisualTransitioning)
+                            ? null
+                            : () {
+                                // Clear Semantics focus to avoid announcing old image?
+                                // Standard practice is just to trigger the action.
+                                context.read<RandomImageBloc>().add(
+                                  const RandomImageEvent.fetchRequested(),
+                                );
+                              },
+                        child: Semantics(
+                          label: "Fetch another random image",
+                          button: true,
+                          enabled:
+                              !(_isLoading(state) || _isVisualTransitioning),
+                          child: SizedBox(
+                            width: 120,
+                            height: 24,
+                            child: Center(
+                              child:
+                                  (_isLoading(state) || _isVisualTransitioning)
+                                  ? SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 3,
+                                        // Ensure spinner matches text color
+                                        color: isDark
+                                            ? Colors.white
+                                            : const Color(0xFFD95A2B),
+                                      ),
+                                    )
+                                  : const Text("Another"),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -206,6 +258,7 @@ class _RandomImageViewState extends State<RandomImageView> {
   Widget _buildBackgroundImageWidget(
     BuildContext context,
     RandomImageState state,
+    bool isDark,
   ) {
     final ImageEntity? image = switch (state) {
       Loaded(:final image) => image,
@@ -215,27 +268,37 @@ class _RandomImageViewState extends State<RandomImageView> {
     };
 
     if (image != null) {
+      // --- Theme: Dynamic ColorFilter ---
+      // Dark Mode: Darken (for immersion)
+      // Light Mode: Lighten (for airy/light feel)
+      final colorFilter = isDark
+          ? const ColorFilter.mode(Colors.black38, BlendMode.darken)
+          : const ColorFilter.mode(Colors.white38, BlendMode.lighten);
+
       return ImageFiltered(
         key: ValueKey('bg_${image.imageBytes.hashCode}'),
         imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
         child: ColorFiltered(
-          colorFilter: const ColorFilter.mode(Colors.black38, BlendMode.lighten),
+          colorFilter: colorFilter,
           child: Image.memory(
             image.imageBytes,
             fit: BoxFit.cover,
             gaplessPlayback: true,
             width: double.infinity,
             height: double.infinity,
-            errorBuilder: (context, error, stackTrace) => const SizedBox.expand(),
+            errorBuilder: (context, error, stackTrace) =>
+                const SizedBox.expand(),
           ),
         ),
       );
     }
 
-    return const SizedBox(
-      key: ValueKey('bg_initial'),
+    return SizedBox(
+      key: const ValueKey('bg_initial'),
       width: double.infinity,
       height: double.infinity,
+      // Default background color based on theme
+      child: ColoredBox(color: isDark ? Colors.black : Colors.white),
     );
   }
 
@@ -270,12 +333,13 @@ class _ErrorIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Center(
         child: Icon(
           Icons.image_not_supported_outlined,
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+          color: isDark ? Colors.white54 : Colors.black54,
           size: 40,
         ),
       ),
@@ -288,9 +352,10 @@ class _LoadingShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Shimmer.fromColors(
-      baseColor: Colors.grey[850]!,
-      highlightColor: Colors.grey[800]!,
+      baseColor: isDark ? Colors.grey[850]! : Colors.grey[300]!,
+      highlightColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
       child: Container(color: Colors.white),
     );
   }
