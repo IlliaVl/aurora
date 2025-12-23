@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:aurora/core/di/injection_container.dart';
-import 'package:aurora/features/random_image/domain/entities/image_entity.dart'; // <-- ADDED
+import 'package:aurora/features/random_image/domain/entities/image_entity.dart';
 import 'package:aurora/features/random_image/presentation/bloc/random_image_bloc.dart';
 
 import 'package:flutter/material.dart';
@@ -30,23 +31,62 @@ class RandomImagePage extends StatelessWidget {
 ///
 /// It uses a [BlocListener] to show errors and a [BlocBuilder]
 /// to rebuild the UI.
-class RandomImageView extends StatelessWidget {
+class RandomImageView extends StatefulWidget {
   const RandomImageView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<RandomImageView> createState() => _RandomImageViewState();
+}
 
-    return BlocListener<RandomImageBloc, RandomImageState>(
-      listener: (context, state) {
-        if (state is Error) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              // The theme is applied from main.dart
-            ),
-          );
-        }
-      },
+class _RandomImageViewState extends State<RandomImageView> {
+  // Using the same duration for both creates a cohesive "scene change" effect.
+  static const Duration _animDuration = Duration(milliseconds: 1500);
+
+  // Tracks if the visual transition (AnimatedSwitcher) is still active
+  // to keep the loading state on the button.
+  bool _isVisualTransitioning = false;
+  Timer? _transitionTimer;
+
+  @override
+  void dispose() {
+    _transitionTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<RandomImageBloc>().state;
+
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<RandomImageBloc, RandomImageState>(
+          listener: (context, state) {
+            if (state is Error) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(state.message)));
+            }
+          },
+        ),
+        BlocListener<RandomImageBloc, RandomImageState>(
+          listenWhen: (previous, current) {
+            return previous is Loading && current is Loaded;
+          },
+          listener: (context, state) {
+            setState(() {
+              _isVisualTransitioning = true;
+            });
+            _transitionTimer?.cancel();
+            _transitionTimer = Timer(_animDuration, () {
+              if (mounted) {
+                setState(() {
+                  _isVisualTransitioning = false;
+                });
+              }
+            });
+          },
+        ),
+      ],
       child: Scaffold(
         // Allow the body to draw behind the app bar
         extendBodyBehindAppBar: true,
@@ -68,51 +108,48 @@ class RandomImageView extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: _buildBackgroundImageWidget(
-                context,
-                context.watch<RandomImageBloc>().state,
-              ),
+              duration: _animDuration,
+              switchInCurve: Curves.easeInOut,
+              switchOutCurve: Curves.easeInOut,
+              child: _buildBackgroundImageWidget(context, state),
             ),
-
-            // --- LAYER 2: A dark gradient overlay to ensure text is readable ---
-            Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.center,
-                  radius: 0.8,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.1),
-                    // Center is lighter
-                    const Color(0xFF1C1C1C).withValues(alpha: 0.8),
-                    // Edges are darker
-                  ],
-                  stops: const [0.0, 1.0],
-                ),
-              ),
-            ),
-
-            // --- LAYER 3: The UI Content ---
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: AspectRatio(
-                        aspectRatio: 1.0,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: _buildImageWidget(
-                            context,
-                            context.watch<RandomImageBloc>().state,
-                          ),
+                    AspectRatio(
+                      aspectRatio: 1.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        // --- Foreground Image Stack ---
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // 1. Underlay (Previous Image)
+                            if (_getPreviousImage(state) case final prev?)
+                              Image.memory(
+                                key: ValueKey(
+                                  'fg_underlay_${prev.imageBytes.hashCode}',
+                                ),
+                                prev.imageBytes,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+
+                            // 2. Animated Switcher
+                            AnimatedSwitcher(
+                              duration: _animDuration,
+                              switchInCurve: Curves.easeInOut,
+                              switchOutCurve: Curves.easeInOut,
+                              child: _buildImageWidget(context, state),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -120,34 +157,26 @@ class RandomImageView extends StatelessWidget {
 
                     // --- The "Another" Button ---
                     ElevatedButton(
-                      onPressed: switch (context
-                          .watch<RandomImageBloc>()
-                          .state) {
-                        // Only enable button if not loading
-                        Loading() => null,
-                        _ => () => context.read<RandomImageBloc>().add(
-                          const RandomImageEvent.fetchRequested(),
-                        ),
-                      },
-                      // We use the button's theme from main.dart
+                      // Disable button while Loading OR while Animating
+                      onPressed: (_isLoading(state) || _isVisualTransitioning)
+                          ? null
+                          : () => context.read<RandomImageBloc>().add(
+                              const RandomImageEvent.fetchRequested(),
+                            ),
                       child: SizedBox(
-                        // --- "Fixed Size Button" Fix ---
                         width: 120,
                         height: 24,
                         child: Center(
-                          child: switch (context
-                              .watch<RandomImageBloc>()
-                              .state) {
-                            Loading() => const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: Color(0xFF1C1C1C), // auroraBlack
-                              ),
-                            ),
-                            _ => const Text("Another"),
-                          },
+                          child: (_isLoading(state) || _isVisualTransitioning)
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    color: Color(0xFF1C1C1C),
+                                  ),
+                                )
+                              : const Text("Another"),
                         ),
                       ),
                     ),
@@ -162,34 +191,18 @@ class RandomImageView extends StatelessWidget {
   }
 
   /// --- HELPER WIDGETS ---
-  /// These helpers now build the image widget based on the
-  /// *entire state*, which is the key to fixing the transition.
 
-  /// Builds the main (foreground) image widget.
-  Widget _buildImageWidget(BuildContext context, RandomImageState state) {
-    final ImageEntity? image = switch (state) {
-      Loaded(:final image) => image,
+  bool _isLoading(RandomImageState state) => state is Loading;
+
+  ImageEntity? _getPreviousImage(RandomImageState state) {
+    return switch (state) {
+      Loaded(:final previousImage) => previousImage,
       Loading(:final previousImage) => previousImage,
       Error(:final previousImage) => previousImage,
       Initial() => null,
     };
-
-    if (image != null) {
-      return Image.memory(
-        key: ValueKey(image.imageBytes.hashCode),
-        image.imageBytes,
-        fit: BoxFit.cover,
-      );
-    }
-
-    // Show shimmer on initial load, or error icon if error on first load
-    return switch (state) {
-      Error() => const _ErrorIcon(key: ValueKey('error')),
-      _ => const _LoadingShimmer(key: ValueKey('initial_loading')),
-    };
   }
 
-  /// Builds the blurred (background) image widget.
   Widget _buildBackgroundImageWidget(
     BuildContext context,
     RandomImageState state,
@@ -204,22 +217,54 @@ class RandomImageView extends StatelessWidget {
     if (image != null) {
       return ImageFiltered(
         key: ValueKey('bg_${image.imageBytes.hashCode}'),
-        imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Image.memory(
-          image.imageBytes,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
+        imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+        child: ColorFiltered(
+          colorFilter: const ColorFilter.mode(Colors.black38, BlendMode.lighten),
+          child: Image.memory(
+            image.imageBytes,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (context, error, stackTrace) => const SizedBox.expand(),
+          ),
         ),
       );
     }
 
-    // Fallback for initial load
-    return const SizedBox(key: ValueKey('bg_initial'));
+    return const SizedBox(
+      key: ValueKey('bg_initial'),
+      width: double.infinity,
+      height: double.infinity,
+    );
+  }
+
+  Widget _buildImageWidget(BuildContext context, RandomImageState state) {
+    final ImageEntity? image = switch (state) {
+      Loaded(:final image) => image,
+      Loading(:final previousImage) => previousImage,
+      Error(:final previousImage) => previousImage,
+      Initial() => null,
+    };
+
+    if (image != null) {
+      return Image.memory(
+        key: ValueKey(image.imageBytes.hashCode),
+        image.imageBytes,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        width: double.infinity,
+        height: double.infinity,
+      );
+    }
+
+    return switch (state) {
+      Error() => const _ErrorIcon(key: ValueKey('error')),
+      _ => const _LoadingShimmer(key: ValueKey('initial_loading')),
+    };
   }
 }
 
-/// --- A Reusable Error Icon Widget ---
 class _ErrorIcon extends StatelessWidget {
   const _ErrorIcon({super.key});
 
@@ -238,13 +283,11 @@ class _ErrorIcon extends StatelessWidget {
   }
 }
 
-/// --- A Reusable Loading Shimmer Widget ---
 class _LoadingShimmer extends StatelessWidget {
   const _LoadingShimmer({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // A shimmer effect is a more "premium" loading state
     return Shimmer.fromColors(
       baseColor: Colors.grey[850]!,
       highlightColor: Colors.grey[800]!,
