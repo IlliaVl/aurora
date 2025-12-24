@@ -47,6 +47,8 @@ dependencies:
   shimmer: ^3.0.0
   image: ^4.5.4
   palette_generator_master: ^1.0.1
+  hive_ce: ^2.16.0
+  hive_ce_flutter: ^2.3.3
 
 dev_dependencies:
   flutter_test:

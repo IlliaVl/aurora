@@ -1,19 +1,12 @@
-import 'dart:typed_data'; // <-- ADDED
 import 'package:aurora/core/error/exceptions.dart';
 import 'package:aurora/features/random_image/data/datasources/image_remote_datasource_interface.dart';
 import 'package:aurora/features/random_image/data/models/image_model.dart';
-
-// --- We need ImageEntity ---
 import 'package:aurora/features/random_image/domain/entities/image_entity.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart'; // for @visibleForTesting
+import 'package:flutter/material.dart';
 import 'package:injectable/injectable.dart';
+import 'dart:typed_data';
 
-/// --- Implementation ---
-///
-/// This class is responsible for making the actual HTTP call
-/// to the remote API using the [Dio] client.
-/// It implements the [ImageRemoteDataSourceInterface] contract.
 @LazySingleton(as: ImageRemoteDataSourceInterface)
 class ImageRemoteDataSource implements ImageRemoteDataSourceInterface {
   final Dio dio;
@@ -26,9 +19,9 @@ class ImageRemoteDataSource implements ImageRemoteDataSourceInterface {
   String? lastImageUrl;
 
   @override
-  Future<ImageEntity> getRandomImage() async {
+  Future<ImageModel> fetchRandomImageModel() async {
     try {
-      // --- Step 1: Get the Image URL ---
+      // 1. Get the JSON which contains the URL
       final response = await dio.get(_apiUrl);
 
       if (response.statusCode != 200) {
@@ -38,31 +31,37 @@ class ImageRemoteDataSource implements ImageRemoteDataSourceInterface {
       }
 
       final imageModel = ImageModel.fromJson(response.data);
-      lastImageUrl = imageModel.url; // Save for background
+      lastImageUrl = imageModel.url;
+      return imageModel;
+    } on DioException catch (e) {
+      throw ServerException('Could not connect to server. Please try again.');
+    } catch (e) {
+      throw ServerException('An unexpected error occurred.');
+    }
+  }
 
-      // --- Step 2: Get the Image Bytes ---
-      // This will throw a DioException (404) if the URL is bad
-      final imageResponse = await dio.get(
-        imageModel.url,
-        // We must tell Dio to download this as raw bytes
+  @override
+  Future<Uint8List> downloadImage(String url) async {
+    try {
+      // 2. Download the actual bytes from the specific URL
+      final response = await dio.get(
+        url,
         options: Options(responseType: ResponseType.bytes),
       );
 
-      if (imageResponse.statusCode == 200) {
-        // Return the entity with the raw bytes
-        return ImageEntity(imageBytes: Uint8List.fromList(imageResponse.data));
+      if (response.statusCode == 200) {
+        return Uint8List.fromList(response.data);
       } else {
         throw ServerException(
           'Failed to download image: ${response.statusCode}',
         );
       }
     } on DioException catch (e) {
-      // --- THIS IS THE FIX ---
       // We catch the technical error and convert it to a
       // simple, user-friendly message.
       if (e.response != null && e.response?.statusCode == 404) {
         throw ServerException(
-          'Oops! The image could not be found (Error 404).',
+          'Oops! The image could not be found.',
         );
       } else {
         // Handle other Dio errors (network, timeout, etc.)
@@ -78,7 +77,5 @@ class ImageRemoteDataSource implements ImageRemoteDataSourceInterface {
   // The UI will call this *after* getting the image bytes,
   // to prevent the background from loading *before* the main image.
   @override
-  String? getImageUrlForBackground() {
-    return lastImageUrl;
-  }
+  String? getImageUrlForBackground() => lastImageUrl;
 }

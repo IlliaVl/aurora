@@ -198,8 +198,9 @@ class _RandomImageViewState extends State<RandomImageView> {
                         onPressed: (_isLoading(state) || _isVisualTransitioning)
                             ? null
                             : () {
-                                // Clear Semantics focus to avoid announcing old image?
-                                // Standard practice is just to trigger the action.
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).hideCurrentSnackBar();
                                 context.read<RandomImageBloc>().add(
                                   const RandomImageEvent.fetchRequested(),
                                 );

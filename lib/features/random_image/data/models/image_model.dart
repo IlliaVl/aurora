@@ -1,8 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-// --- We no longer need ImageEntity here ---
-// import 'package:aurora/features/random_image/domain/entities/image_entity.dart';
-
 part 'image_model.freezed.dart';
 
 part 'image_model.g.dart';
@@ -19,8 +16,4 @@ abstract class ImageModel with _$ImageModel {
   /// Factory constructor to parse JSON
   factory ImageModel.fromJson(Map<String, dynamic> json) =>
       _$ImageModelFromJson(json);
-
-  // --- REMOVED toEntity() ---
-  // The ImageRemoteDataSource now constructs the ImageEntity
-  // itself after downloading the bytes.
 }

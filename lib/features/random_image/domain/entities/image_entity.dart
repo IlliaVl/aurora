@@ -6,7 +6,6 @@ import 'package:equatable/equatable.dart';
 /// This object represents the actual image data
 /// that our UI will display.
 class ImageEntity extends Equatable {
-  // --- UPDATED ---
   /// The raw bytes of the image.
   final Uint8List imageBytes;
 
