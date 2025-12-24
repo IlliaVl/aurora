@@ -1,3 +1,4 @@
+import 'package:aurora/core/canstants/app_constants.dart';
 import 'package:aurora/core/di/injection_container.dart';
 import 'package:aurora/core/theme/app_theme.dart';
 import 'package:aurora/features/random_image/presentation/pages/random_image_page.dart';
@@ -16,9 +17,7 @@ void main() async {
   // --- 1. Init Hive ---
   await Hive.initFlutter();
 
-  // --- FIX: Open the correct box name ---
-  // Must match the _boxName in ImageLocalDataSource ('image_cache_v2')
-  await Hive.openBox('image_cache');
+  await Hive.openBox(AppConstants.imageCacheBox);
   // Initialize dependencies
   await configureDependencies();
   runApp(const MyApp());

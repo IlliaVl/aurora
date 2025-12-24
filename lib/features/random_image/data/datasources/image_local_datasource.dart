@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:aurora/core/canstants/app_constants.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:injectable/injectable.dart';
 
@@ -11,7 +12,7 @@ abstract class ImageLocalDataSourceInterface {
 
 @LazySingleton(as: ImageLocalDataSourceInterface)
 class ImageLocalDataSource implements ImageLocalDataSourceInterface {
-  static const String _boxName = 'image_cache';
+  static const String _boxName = AppConstants.imageCacheBox;
 
   @override
   Future<void> cacheImage(String url, Uint8List bytes) async {
